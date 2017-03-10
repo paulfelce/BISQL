@@ -1,5 +1,5 @@
+--look for lifting costs
 
-SELECT * FROM PTSL_Configuration_Account_Categories
 
 USE PTSL_AZI_Datawarehouse;
 
@@ -7,16 +7,19 @@ USE PTSL_AZI_Datawarehouse;
 --Need to pick up 'current year' from somewhere. We can either do it as part of the fact table load and populate columns, or use a control table
 --Going to go for configuration table for now. Use a variable for BudgetYear, which we will later populate from a table.
 
-
+DECLARE @BudgetYear char(4) = 2017;
 -- Above query is fine for raw data
 -- Filtered to opex only account codes
 
 with core as( -- subtotals fixed to 99% accuracy
 
-SELECT ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , Sum([Amount Base]/-1000) as Q12017
+SELECT ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , 
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'001',@BudgetYear+'002',@BudgetYear+'003') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ1,
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'004',@BudgetYear+'005',@BudgetYear+'006') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ2,
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'007',@BudgetYear+'008',@BudgetYear+'009') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ3,
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'010',@BudgetYear+'011',@BudgetYear+'012') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ4
 FROM PTSL_FACT_Data
 INNER JOIN PTSL_Dim_Accounts on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
-WHERE PERIOD in (2017001,2017002,2017003)
 AND BudgetLedger='B'
 AND GNRL_DESCR_02 = 2016--(SELECT value FROM admin.Mart_Configuration WHERE settingID = 'BUDGETLOADEDPERIOD')
 AND isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') = 'OPEX'
@@ -26,27 +29,27 @@ GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccount
 --SELECT for now, maybe wrap in a view later. Want it as an object we can test the final sort order on
 
 SELECT * FROM (
-	SELECT ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,Sum(Q12017) as Q12017 FROM core
+	SELECT ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,Sum(CYQ1) as CYQ1,Sum(CYQ2) as CYQ2 ,Sum(CYQ3) as CYQ3,Sum(CYQ4) as CYQ4  FROM core
 	GROUP BY ManagementAccounts2Name /*this will get us the loweset levels */
 	,ManagementAccounts2Code
 
 	UNION -- add a revenues summary
-	SELECT 555 as secondary_sort,'REVENUES', Sum(Q12017) FROM core
+	SELECT 555 as secondary_sort,'REVENUES', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
 	WHERE LEFT(AccountCode,1) = 6
 	
 
 	UNION -- G&A Summary
-	SELECT 777 as secondary_sort,'G&A', Sum(Q12017) FROM core
+	SELECT 777 as secondary_sort,'G&A', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
 	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
 	
 
 	UNION -- EBITDA Summary
-	SELECT 811 as secondary_sort,'EBITDA', Sum(Q12017) FROM core
+	SELECT 811 as secondary_sort,'EBITDA', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
 	WHERE LEFT(AccountCode,3) < 811 AND left(AccountCode,1) >=6
 	
 
 	UNION -- Net-Profit/Loss
-	SELECT 999 as secondary_sort,'NET-PROFIT/LOSS', Sum(Q12017) FROM core
+	SELECT 999 as secondary_sort,'NET-PROFIT/LOSS', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
 	WHERE left(ManagementAccounts2Code,1) >=6
 	
 
