@@ -1,23 +1,28 @@
 --look for lifting costs
 
+--Next Step to reorder to be a left join so we pick up all categories , even if empty.
+--Then wire to report.
+
 
 USE PTSL_AZI_Datawarehouse;
 
 /* Modify the query to handle the time periods we want to see */
---Need to pick up 'current year' from somewhere. We can either do it as part of the fact table load and populate columns, or use a control table
---Going to go for configuration table for now. Use a variable for BudgetYear, which we will later populate from a table.
 
-DECLARE @BudgetYear char(4) = 2017;
+
+DECLARE @BudgetYear char(4) = 2017; -- need to read this from a table
 -- Above query is fine for raw data
 -- Filtered to opex only account codes
 
 with core as( -- subtotals fixed to 99% accuracy
 
 SELECT ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , 
-	SUM (CASE WHEN PERIOD in (@BudgetYear+'001',@BudgetYear+'002',@BudgetYear+'003') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ1,
-	SUM (CASE WHEN PERIOD in (@BudgetYear+'004',@BudgetYear+'005',@BudgetYear+'006') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ2,
-	SUM (CASE WHEN PERIOD in (@BudgetYear+'007',@BudgetYear+'008',@BudgetYear+'009') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ3,
-	SUM (CASE WHEN PERIOD in (@BudgetYear+'010',@BudgetYear+'011',@BudgetYear+'012') THEN [Amount Base]/1000 ELSE 0 END )AS CYQ4
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS PriorYear,
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'001',@BudgetYear+'002',@BudgetYear+'003') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ1,
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'004',@BudgetYear+'005',@BudgetYear+'006') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ2,
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'007',@BudgetYear+'008',@BudgetYear+'009') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ3,
+	SUM (CASE WHEN PERIOD in (@BudgetYear+'010',@BudgetYear+'011',@BudgetYear+'012') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ4,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYear,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYearPlusOne
 FROM PTSL_FACT_Data
 INNER JOIN PTSL_Dim_Accounts on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
 AND BudgetLedger='B'
@@ -26,30 +31,39 @@ AND isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') = 'OPEX'
 GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code
 )
 
---SELECT for now, maybe wrap in a view later. Want it as an object we can test the final sort order on
+--SELECT for now, maybe wrap in a view later.
+--Want it as an object we can test the final sort order on
 
 SELECT * FROM (
-	SELECT ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,Sum(CYQ1) as CYQ1,Sum(CYQ2) as CYQ2 ,Sum(CYQ3) as CYQ3,Sum(CYQ4) as CYQ4  FROM core
+	SELECT ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,
+	Sum(PriorYear) as PriorYear,
+	Sum(CurrentYearQ1) as CurrentYearQ1,Sum(CurrentYearQ2) as CurrentYearQ2 ,Sum(CurrentYearQ3) as CurrentYearQ3,Sum(CurrentYearQ4) as CurrentYearQ4,
+	Sum(NextYear) as NextYear,Sum(NextYearPlusOne) as NextYearPlusOne
+	FROM core
 	GROUP BY ManagementAccounts2Name /*this will get us the loweset levels */
 	,ManagementAccounts2Code
 
 	UNION -- add a revenues summary
-	SELECT 555 as secondary_sort,'REVENUES', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
+	SELECT 555 as secondary_sort,'REVENUES',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	FROM core
 	WHERE LEFT(AccountCode,1) = 6
 	
 
 	UNION -- G&A Summary
-	SELECT 777 as secondary_sort,'G&A', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
+	SELECT 777 as secondary_sort,'G&A',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	FROM core
 	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
 	
 
 	UNION -- EBITDA Summary
-	SELECT 811 as secondary_sort,'EBITDA', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
+	SELECT 811 as secondary_sort,'EBITDA',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	FROM core
 	WHERE LEFT(AccountCode,3) < 811 AND left(AccountCode,1) >=6
 	
 
 	UNION -- Net-Profit/Loss
-	SELECT 999 as secondary_sort,'NET-PROFIT/LOSS', Sum(CYQ1), Sum(CYQ2), Sum(CYQ3), Sum(CYQ4) FROM core
+	SELECT 999 as secondary_sort,'NET-PROFIT/LOSS',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	FROM core
 	WHERE left(ManagementAccounts2Code,1) >=6
 	
 
