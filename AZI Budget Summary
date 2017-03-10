@@ -1,6 +1,6 @@
+
 --To do wire to report.
 --confirm sort order (eg profesional costs are before travel here, but not on printout)
---add Jan-Dec
 --Filter by JV (user)
 --Wire BudgetYear to a table
 
@@ -9,7 +9,7 @@ USE PTSL_AZI_Datawarehouse;
 DECLARE @BudgetYear char(4) = 2017; -- need to read this from a table
 
 -- Filtered to opex only account codes
-
+-- investigate revenues for jan 17
 
 
 with core as( -- subtotals fixed to 99% accuracy
@@ -21,13 +21,26 @@ SELECT BudgetLedger,ManagementAccounts2Code,LEFT(Cast(ManagementAccounts2Code*10
 	SUM (CASE WHEN PERIOD in (@BudgetYear+'007',@BudgetYear+'008',@BudgetYear+'009') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ3,
 	SUM (CASE WHEN PERIOD in (@BudgetYear+'010',@BudgetYear+'011',@BudgetYear+'012') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ4,
 	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYear,
-	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYearPlusOne
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYearPlusOne,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '001' THEN [Amount Base]/1000 ELSE 0 END )AS Jan,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '002' THEN [Amount Base]/1000 ELSE 0 END )AS Feb,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '003' THEN [Amount Base]/1000 ELSE 0 END )AS Mar,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '004' THEN [Amount Base]/1000 ELSE 0 END )AS Apr,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '005' THEN [Amount Base]/1000 ELSE 0 END )AS May,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '006' THEN [Amount Base]/1000 ELSE 0 END )AS Jun,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '007' THEN [Amount Base]/1000 ELSE 0 END )AS Jul,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '008' THEN [Amount Base]/1000 ELSE 0 END )AS Aug,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '009' THEN [Amount Base]/1000 ELSE 0 END )AS Sep,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '010' THEN [Amount Base]/1000 ELSE 0 END )AS Oct,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '011' THEN [Amount Base]/1000 ELSE 0 END )AS Nov,
+	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear AND RIGHT(PERIOD,3) = '012' THEN [Amount Base]/1000 ELSE 0 END )AS Dec
 FROM PTSL_Dim_Accounts
 LEFT JOIN PTSL_Fact_Data on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
 AND GNRL_DESCR_02 = 2016--(SELECT value FROM admin.Mart_Configuration WHERE settingID = 'BUDGETLOADEDPERIOD')
 AND isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') = 'OPEX'
 GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code, BudgetLedger
 )
+
 
 
 --SELECT for now, maybe wrap in a view later.
@@ -37,31 +50,36 @@ SELECT * FROM (
 	SELECT row_sort,BudgetLedger,ManagementAccounts2Name,
 	Sum(PriorYear) as PriorYear,
 	Sum(CurrentYearQ1) as CurrentYearQ1,Sum(CurrentYearQ2) as CurrentYearQ2 ,Sum(CurrentYearQ3) as CurrentYearQ3,Sum(CurrentYearQ4) as CurrentYearQ4,
-	Sum(NextYear) as NextYear,Sum(NextYearPlusOne) as NextYearPlusOne
+	Sum(NextYear) as NextYear,Sum(NextYearPlusOne) as NextYearPlusOne,
+	SUM(Jan) AS Jan,SUM(Feb) AS Feb,SUM(Mar) AS Mar,SUM(Apr) AS Apr,SUM(May) AS May,SUM(Jun) AS Jun,SUM(Jul) AS Jul,SUM(Aug) AS Aug,SUM(Sep) AS Sep,SUM(Oct) AS Oct,SUM(Nov) AS Nov,SUM(Dec) AS Dec	
 	FROM core
 	GROUP BY ManagementAccounts2Name /*this will get us the loweset levels */
 	,ManagementAccounts2Code,BudgetLedger,row_sort
 
 	UNION -- add a revenues summary
-	SELECT 55500,BudgetLedger,'REVENUES',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT 55500,BudgetLedger,'REVENUES',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE LEFT(AccountCode,1) = '6'
 	GROUP BY BudgetLedger
 
 	UNION -- G&A Summary
-	SELECT 77700,BudgetLedger,'G&A',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT 77700,BudgetLedger,'G&A',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
 	GROUP BY BudgetLedger
 
 	UNION -- EBITDA Summary
-	SELECT 81100 ,BudgetLedger,'EBITDA',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT 81100 ,BudgetLedger,'EBITDA',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE LEFT(AccountCode,3) < '811' AND left(AccountCode,1) >='6'
 	GROUP BY BudgetLedger
 
 	UNION -- Net-Profit/Loss
-	SELECT 99900,BudgetLedger,'NET-PROFIT/LOSS',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT 99900,BudgetLedger,'NET-PROFIT/LOSS',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE left(ManagementAccounts2Code,1) >=6
 	GROUP BY BudgetLedger
