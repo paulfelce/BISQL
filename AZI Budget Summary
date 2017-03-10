@@ -1,17 +1,18 @@
---look for lifting costs
 
---Next Step to reorder to be a left join so we pick up all categories , even if empty.
---Then wire to report.
-
+--move Ledger out ,so can filter from report
+--To do wire to report.
+--confirm sort order (eg profesional costs are before travel here, but not on printout)
+--add Jan-Dec
+--Filter by JV (user)
+--Wire BudgetYear to a table
 
 USE PTSL_AZI_Datawarehouse;
 
-/* Modify the query to handle the time periods we want to see */
-
-
 DECLARE @BudgetYear char(4) = 2017; -- need to read this from a table
--- Above query is fine for raw data
+
 -- Filtered to opex only account codes
+
+
 
 with core as( -- subtotals fixed to 99% accuracy
 
@@ -23,18 +24,19 @@ SELECT ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2
 	SUM (CASE WHEN PERIOD in (@BudgetYear+'010',@BudgetYear+'011',@BudgetYear+'012') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ4,
 	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYear,
 	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYearPlusOne
-FROM PTSL_FACT_Data
-INNER JOIN PTSL_Dim_Accounts on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
+FROM PTSL_Dim_Accounts
+LEFT JOIN PTSL_Fact_Data on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
 AND BudgetLedger='B'
 AND GNRL_DESCR_02 = 2016--(SELECT value FROM admin.Mart_Configuration WHERE settingID = 'BUDGETLOADEDPERIOD')
 AND isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') = 'OPEX'
 GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code
 )
 
+
 --SELECT for now, maybe wrap in a view later.
 --Want it as an object we can test the final sort order on
 
-SELECT * FROM (
+SELECT left(cast(secondary_sort *100000 as varchar(20)),5),* FROM (
 	SELECT ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,
 	Sum(PriorYear) as PriorYear,
 	Sum(CurrentYearQ1) as CurrentYearQ1,Sum(CurrentYearQ2) as CurrentYearQ2 ,Sum(CurrentYearQ3) as CurrentYearQ3,Sum(CurrentYearQ4) as CurrentYearQ4,
@@ -46,20 +48,20 @@ SELECT * FROM (
 	UNION -- add a revenues summary
 	SELECT 555 as secondary_sort,'REVENUES',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
 	FROM core
-	WHERE LEFT(AccountCode,1) = 6
+	WHERE LEFT(AccountCode,1) = '6'
 	
 
 	UNION -- G&A Summary
 	SELECT 777 as secondary_sort,'G&A',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
 	FROM core
 	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
-	
+
 
 	UNION -- EBITDA Summary
 	SELECT 811 as secondary_sort,'EBITDA',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
 	FROM core
-	WHERE LEFT(AccountCode,3) < 811 AND left(AccountCode,1) >=6
-	
+	WHERE LEFT(AccountCode,3) < '811' AND left(AccountCode,1) >='6'
+		
 
 	UNION -- Net-Profit/Loss
 	SELECT 999 as secondary_sort,'NET-PROFIT/LOSS',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
@@ -68,4 +70,6 @@ SELECT * FROM (
 	
 
 ) data
-order by left(cast(secondary_sort *100000 as varchar(20)),5)
+WHERE LEFT(cast(secondary_sort *100000 as varchar(20)),5) >='55500'
+AND LEFT(cast(secondary_sort *100000 as varchar(20)),5) NOT IN(61000,63000) -- AZI specific exclusion
+ORDER BY LEFT(cast(secondary_sort *100000 as varchar(20)),5)
