@@ -1,0 +1,54 @@
+
+SELECT * FROM PTSL_Configuration_Account_Categories
+
+USE PTSL_AZI_Datawarehouse;
+
+/* Modify the query to handle the time periods we want to see */
+--Need to pick up 'current year' from somewhere. We can either do it as part of the fact table load and populate columns, or use a control table
+--Going to go for configuration table for now. Use a variable for BudgetYear, which we will later populate from a table.
+
+
+-- Above query is fine for raw data
+-- Filtered to opex only account codes
+
+with core as( -- subtotals fixed to 99% accuracy
+
+SELECT ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , Sum([Amount Base]/-1000) as Q12017
+FROM PTSL_FACT_Data
+INNER JOIN PTSL_Dim_Accounts on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
+WHERE PERIOD in (2017001,2017002,2017003)
+AND BudgetLedger='B'
+AND GNRL_DESCR_02 = 2016--(SELECT value FROM admin.Mart_Configuration WHERE settingID = 'BUDGETLOADEDPERIOD')
+AND isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') = 'OPEX'
+GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code
+)
+
+--SELECT for now, maybe wrap in a view later. Want it as an object we can test the final sort order on
+
+SELECT * FROM (
+	SELECT ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,Sum(Q12017) as Q12017 FROM core
+	GROUP BY ManagementAccounts2Name /*this will get us the loweset levels */
+	,ManagementAccounts2Code
+
+	UNION -- add a revenues summary
+	SELECT 555 as secondary_sort,'REVENUES', Sum(Q12017) FROM core
+	WHERE LEFT(AccountCode,1) = 6
+	
+
+	UNION -- G&A Summary
+	SELECT 777 as secondary_sort,'G&A', Sum(Q12017) FROM core
+	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
+	
+
+	UNION -- EBITDA Summary
+	SELECT 811 as secondary_sort,'EBITDA', Sum(Q12017) FROM core
+	WHERE LEFT(AccountCode,3) < 811 AND left(AccountCode,1) >=6
+	
+
+	UNION -- Net-Profit/Loss
+	SELECT 999 as secondary_sort,'NET-PROFIT/LOSS', Sum(Q12017) FROM core
+	WHERE left(ManagementAccounts2Code,1) >=6
+	
+
+) data
+order by left(cast(secondary_sort *100000 as varchar(20)),5)
