@@ -1,5 +1,5 @@
 
---move Ledger out ,so can filter from report
+
 --To do wire to report.
 --confirm sort order (eg profesional costs are before travel here, but not on printout)
 --add Jan-Dec
@@ -16,7 +16,7 @@ DECLARE @BudgetYear char(4) = 2017; -- need to read this from a table
 
 with core as( -- subtotals fixed to 99% accuracy
 
-SELECT ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , 
+SELECT BudgetLedger,ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , 
 	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS PriorYear,
 	SUM (CASE WHEN PERIOD in (@BudgetYear+'001',@BudgetYear+'002',@BudgetYear+'003') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ1,
 	SUM (CASE WHEN PERIOD in (@BudgetYear+'004',@BudgetYear+'005',@BudgetYear+'006') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ2,
@@ -26,10 +26,9 @@ SELECT ManagementAccounts2Code,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2
 	SUM (CASE WHEN LEFT(PERIOD,4) = @BudgetYear-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYearPlusOne
 FROM PTSL_Dim_Accounts
 LEFT JOIN PTSL_Fact_Data on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
-AND BudgetLedger='B'
 AND GNRL_DESCR_02 = 2016--(SELECT value FROM admin.Mart_Configuration WHERE settingID = 'BUDGETLOADEDPERIOD')
 AND isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') = 'OPEX'
-GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code
+GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code, BudgetLedger
 )
 
 
@@ -37,39 +36,40 @@ GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccount
 --Want it as an object we can test the final sort order on
 
 SELECT left(cast(secondary_sort *100000 as varchar(20)),5),* FROM (
-	SELECT ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,
+	SELECT BudgetLedger,ManagementAccounts2Code as secondary_sort,ManagementAccounts2Name,
 	Sum(PriorYear) as PriorYear,
 	Sum(CurrentYearQ1) as CurrentYearQ1,Sum(CurrentYearQ2) as CurrentYearQ2 ,Sum(CurrentYearQ3) as CurrentYearQ3,Sum(CurrentYearQ4) as CurrentYearQ4,
 	Sum(NextYear) as NextYear,Sum(NextYearPlusOne) as NextYearPlusOne
 	FROM core
 	GROUP BY ManagementAccounts2Name /*this will get us the loweset levels */
-	,ManagementAccounts2Code
+	,ManagementAccounts2Code,BudgetLedger
 
 	UNION -- add a revenues summary
-	SELECT 555 as secondary_sort,'REVENUES',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT BudgetLedger,555 as secondary_sort,'REVENUES',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
 	FROM core
 	WHERE LEFT(AccountCode,1) = '6'
-	
+	GROUP BY BudgetLedger
 
 	UNION -- G&A Summary
-	SELECT 777 as secondary_sort,'G&A',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT BudgetLedger,777 as secondary_sort,'G&A',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
 	FROM core
 	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
-
+	GROUP BY BudgetLedger
 
 	UNION -- EBITDA Summary
-	SELECT 811 as secondary_sort,'EBITDA',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT BudgetLedger,811 as secondary_sort,'EBITDA',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
 	FROM core
 	WHERE LEFT(AccountCode,3) < '811' AND left(AccountCode,1) >='6'
-		
+	GROUP BY BudgetLedger
 
 	UNION -- Net-Profit/Loss
-	SELECT 999 as secondary_sort,'NET-PROFIT/LOSS',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
+	SELECT BudgetLedger,999 as secondary_sort,'NET-PROFIT/LOSS',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne)
 	FROM core
 	WHERE left(ManagementAccounts2Code,1) >=6
-	
+	GROUP BY BudgetLedger
 
 ) data
 WHERE LEFT(cast(secondary_sort *100000 as varchar(20)),5) >='55500'
 AND LEFT(cast(secondary_sort *100000 as varchar(20)),5) NOT IN(61000,63000) -- AZI specific exclusion
+AND BudgetLedger='B'
 ORDER BY LEFT(cast(secondary_sort *100000 as varchar(20)),5)
