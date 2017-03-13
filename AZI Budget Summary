@@ -1,10 +1,12 @@
+
 ALTER VIEW [dbo].[PTSL_Azimuth_Summary_Data] AS
 --Returns rows for Year with Quarter and month data for  OPEX report
 
 with core as( -- subtotals fixed to 99% accuracy
 --the JV code is stored in entity venture, but this isn't alwasy the JV , must look it up in extended transaction analysis
 --get rid of the collate on ext_text_6 when we pull data to a table, rather than use the view
-SELECT BudgetLedger,ManagementAccounts2Code,LEFT(Cast(ManagementAccounts2Code*100000   as varchar(20)),5) as row_sort, PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , ext_text_6 Collate Database_Default as JV,
+
+SELECT BudgetLedger,ManagementAccounts1Code,ManagementAccounts2Code,LEFT(Cast(ManagementAccounts2Code*100000   as varchar(20)),5) as row_sort, PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , ext_text_6 Collate Database_Default as JV,
 	isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') BusinessExpenditureType,
 	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value -1 THEN [Amount Base]/1000 ELSE 0 END )AS PriorYear,
 	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'001',Admin.Mart_Configuration.Value+'002',Admin.Mart_Configuration.Value+'003') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ1,
@@ -33,58 +35,113 @@ LEFT JOIN PTSL_Dim_Extended_Transaction_Analysis ON PTSL_Dim_Extended_Transactio
 	AND PTSL_Dim_Extended_Transaction_Analysis.ANL_CODE = PTSL_FACT_Data.[Entity Venture] Collate Database_Default
 LEFT JOIN Admin.Mart_Configuration ON SettingID = 'BudgetYear' --Use the configuration to tell us which year we are displaying as the budget year. 
 
-GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code, BudgetLedger , ext_text_6 , PTSL_Dim_Accounts.BusinessExpenditureType
+GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts1Code,ManagementAccounts2Code, BudgetLedger , ext_text_6 , PTSL_Dim_Accounts.BusinessExpenditureType
 
 )
 
---Want it as an object we can test the final sort order on
-
 SELECT row_sort,BudgetLedger, ManagementAccounts2Name,JV,BusinessExpenditureType,Sum(PriorYear) PriorYear,Sum(CurrentYearQ1) as CurrentYearQ1,SUM(CurrentYearQ2) CurrentYearQ2,Sum(CurrentYearQ3) CurrentYearQ3,SUM(CurrentYearQ4) CurrentYearQ4,Sum(CurrentYear) as CurrentYear,
-	SUM(NextYear) NextYear,SUM(NextYearPlusOne) NextYearPlusOne,SUM(Jan) Jan,SUM(Feb) Feb,SUM(Mar)Mar,SUM(Apr)Apr,SUM(May)May,SUM(Jun)Jun,SUM(Jul) Jul,SUM(Aug) Aug,SUM(Sep)Sep,SUM(Oct)Oct,SUM(Nov)Nov,SUM([Dec])Dec,'' as blank FROM (
+	SUM(NextYear) NextYear,SUM(NextYearPlusOne) NextYearPlusOne,SUM(Jan) Jan,SUM(Feb) Feb,SUM(Mar)Mar,SUM(Apr)Apr,SUM(May)May,SUM(Jun)Jun,SUM(Jul) Jul,SUM(Aug) Aug,SUM(Sep)Sep,SUM(Oct)Oct,SUM(Nov)Nov,SUM([Dec])Dec,'' as blank,bold_row FROM (
+
 	
-	
-	SELECT row_sort,BudgetLedger,
+	/*Details categories*/
+	/*=====================================================================================================================================================================================================================*/
+	SELECT row_sort,BudgetLedger,-- don't return management1accountcode, it could cause multiple rows, we only use it for filtering
 	CASE WHEN ManagementAccounts2Code in ('800','805','807','808','809') THEN '&nbsp;&nbsp;&nbsp;&nbsp;' ELSE '&nbsp;&nbsp;' END + ManagementAccounts2Name as ManagementAccounts2Name,  -- need a double indent for these
 	
 	 JV,BusinessExpenditureType,
 	Sum(PriorYear) as PriorYear,
 	Sum(CurrentYearQ1) as CurrentYearQ1,Sum(CurrentYearQ2) as CurrentYearQ2 ,Sum(CurrentYearQ3) as CurrentYearQ3,Sum(CurrentYearQ4) as CurrentYearQ4,Sum(CurrentYear) as CurrentYear,
 	Sum(NextYear) as NextYear,Sum(NextYearPlusOne) as NextYearPlusOne,
-	SUM(Jan) AS Jan,SUM(Feb) AS Feb,SUM(Mar) AS Mar,SUM(Apr) AS Apr,SUM(May) AS May,SUM(Jun) AS Jun,SUM(Jul) AS Jul,SUM(Aug) AS Aug,SUM(Sep) AS Sep,SUM(Oct) AS Oct,SUM(Nov) AS Nov,SUM(Dec) AS Dec	
+	SUM(Jan) AS Jan,SUM(Feb) AS Feb,SUM(Mar) AS Mar,SUM(Apr) AS Apr,SUM(May) AS May,SUM(Jun) AS Jun,SUM(Jul) AS Jul,SUM(Aug) AS Aug,SUM(Sep) AS Sep,SUM(Oct) AS Oct,SUM(Nov) AS Nov,SUM(Dec) AS Dec	, 0 as bold_row
 	FROM core
 	GROUP BY ManagementAccounts2Name /*this will get us the loweset levels */
 	,ManagementAccounts2Code,BudgetLedger,row_sort,JV ,BusinessExpenditureType
 
+	--We have groupings defined by client custom combinations of account code, management 1 reporting and management 2 reporting. The following sections group these appropriately
+	/*OPEX categories*/
+	/*=====================================================================================================================================================================================================================*/
+
 	UNION -- add a revenues summary
-	SELECT 55500,BudgetLedger,'REVENUES',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
-	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
+	SELECT 55500,BudgetLedger,'Revenues',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row -- determine bold status in query so we don't need lots of conditional formats in report.
 	FROM core
 	WHERE LEFT(AccountCode,1) = '6'
 	GROUP BY BudgetLedger,JV,BusinessExpenditureType
 
 	UNION -- G&A Summary
 	SELECT 77700,BudgetLedger,'G&A',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
-	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
 	FROM core
 	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
 	GROUP BY BudgetLedger,JV,BusinessExpenditureType
 
 	UNION -- EBITDA Summary
 	SELECT 81100 ,BudgetLedger ,'EBITDA',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
-	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
 	FROM core
 	WHERE LEFT(AccountCode,3) < '811' AND left(AccountCode,1) >='6'
 	GROUP BY BudgetLedger,JV,BusinessExpenditureType
 
 	UNION -- Net-Profit/Loss
 	SELECT 99900,BudgetLedger,'NET-PROFIT/LOSS',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
-	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
 	FROM core
 	WHERE left(ManagementAccounts2Code,1) >=6
 	GROUP BY BudgetLedger,JV,BusinessExpenditureType
+
+
+	/*Licence categories*/
+	/*=====================================================================================================================================================================================================================*/
+	--Prepaids
+	UNION
+	SELECT 77700,BudgetLedger,'Prepaids',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
+	FROM core
+	WHERE ManagementAccounts2Code = ('1301')
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
+
+	--Acquisition, exploration and evaluation costs
+	UNION
+	SELECT 77700,BudgetLedger,'Acquisition, exploration and evaluation costs',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
+	FROM core
+	WHERE ManagementAccounts1Code = '205'
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
+
+	--Operating expenses (non capitalized costs)
+	UNION
+	SELECT 77700,BudgetLedger,'Operating expenses (non capitalized costs)',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
+	FROM core
+	WHERE ManagementAccounts1Code in('600','700','800')
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
+
+	--Project accruals (change in accrued licence)
+	UNION
+	SELECT 77700,BudgetLedger,'Project accruals (change in accrued licence)',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
+	FROM core
+	WHERE AccountCode>='430050' and AccountCode <= '430650'
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
+
+
+	--Current period cash spend
+	UNION
+	SELECT 77700,BudgetLedger,'Current period cash spend',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
+	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec), 1 as bold_row
+	FROM core
+	WHERE ManagementAccounts2Code=10
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
+
 
 ) data
 
 WHERE row_sort NOT IN(61000,63000) -- AZI specific exclusion
 --AND LEFT(Cast(row_sort *1000   as varchar(20)),5)  >='555'
-GROUP BY row_sort,BudgetLedger,ManagementAccounts2Name,JV,BusinessExpenditureType
+GROUP BY row_sort,BudgetLedger,ManagementAccounts2Name,JV,BusinessExpenditureType,  bold_row
+
+GO
+
+
+
+SELECT * FROM [PTSL_Azimuth_Summary_Data]
