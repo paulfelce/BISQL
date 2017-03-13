@@ -1,28 +1,19 @@
-
---To do wire to report.
---confirm sort order (eg profesional costs are before travel here, but not on printout)
---Filter by JV (user)  
--- Create a load for extended transaction analysis rather than use a view
-
-
-USE PTSL_AZI_Datawarehouse;
-
-
--- Filtered to opex only account codes
-
-
+ALTER VIEW [dbo].[PTSL_Azimuth_Summary_Data] AS
+--Returns rows for Year with Quarter and month data for  OPEX report
 
 with core as( -- subtotals fixed to 99% accuracy
 --the JV code is stored in entity venture, but this isn't alwasy the JV , must look it up in extended transaction analysis
 --get rid of the collate on ext_text_6 when we pull data to a table, rather than use the view
 SELECT BudgetLedger,ManagementAccounts2Code,LEFT(Cast(ManagementAccounts2Code*100000   as varchar(20)),5) as row_sort, PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Name , ext_text_6 Collate Database_Default as JV,
+	isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') BusinessExpenditureType,
 	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value -1 THEN [Amount Base]/1000 ELSE 0 END )AS PriorYear,
 	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'001',Admin.Mart_Configuration.Value+'002',Admin.Mart_Configuration.Value+'003') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ1,
 	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'004',Admin.Mart_Configuration.Value+'005',Admin.Mart_Configuration.Value+'006') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ2,
 	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'007',Admin.Mart_Configuration.Value+'008',Admin.Mart_Configuration.Value+'009') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ3,
 	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'010',Admin.Mart_Configuration.Value+'011',Admin.Mart_Configuration.Value+'012') THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYearQ4,
-	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYear,
-	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value-1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYearPlusOne,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value  THEN [Amount Base]/1000 ELSE 0 END )AS CurrentYear,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value+1 THEN [Amount Base]/1000 ELSE 0 END )AS NextYear,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value+2 THEN [Amount Base]/1000 ELSE 0 END )AS NextYearPlusOne,
 	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '001' THEN [Amount Base]/1000 ELSE 0 END )AS Jan,
 	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '002' THEN [Amount Base]/1000 ELSE 0 END )AS Feb,
 	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '003' THEN [Amount Base]/1000 ELSE 0 END )AS Mar,
@@ -37,64 +28,63 @@ SELECT BudgetLedger,ManagementAccounts2Code,LEFT(Cast(ManagementAccounts2Code*10
 	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '012' THEN [Amount Base]/1000 ELSE 0 END )AS Dec
 FROM PTSL_Dim_Accounts
 LEFT JOIN PTSL_Fact_Data on PTSL_Dim_Accounts.AccountCode = [GL CODE] and PTSL_FACT_Data.BusinessUnitKey = PTSL_Dim_Accounts.BusinessUnitKey
-AND GNRL_DESCR_02 = 2016--(SELECT value FROM admin.Mart_Configuration WHERE settingID = 'BUDGETLOADEDPERIOD')
-AND isnull(PTSL_Dim_Accounts.BusinessExpenditureType,'xx') = 'OPEX'
+AND GNRL_DESCR_02 =(SELECT value FROM admin.Mart_Configuration WHERE settingID = 'BUDGETLOADEDPERIOD')
 LEFT JOIN PTSL_Dim_Extended_Transaction_Analysis ON PTSL_Dim_Extended_Transaction_Analysis.ANL_CAT_ID = 01 and PTSL_Dim_Extended_Transaction_Analysis.BusinessUnitKey = PTSL_fact_Data.BusinessUnitKey 
 	AND PTSL_Dim_Extended_Transaction_Analysis.ANL_CODE = PTSL_FACT_Data.[Entity Venture] Collate Database_Default
 LEFT JOIN Admin.Mart_Configuration ON SettingID = 'BudgetYear' --Use the configuration to tell us which year we are displaying as the budget year. 
-GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code, BudgetLedger , ext_text_6
+
+GROUP BY ManagementAccounts2Name,PTSL_Dim_Accounts.AccountCode,ManagementAccounts2Code, BudgetLedger , ext_text_6 , PTSL_Dim_Accounts.BusinessExpenditureType
+
 )
 
---SELECT for now, maybe wrap in a view later.
 --Want it as an object we can test the final sort order on
 
-SELECT row_sort,BudgetLedger,ManagementAccounts2Name,JV,Sum(PriorYear) PriorYear,Sum(CurrentYearQ1) as CurrentYearQ1,SUM(CurrentYearQ2) CurrentYearQ2,Sum(CurrentYearQ3) CurrentYearQ3,SUM(CurrentYearQ4) CurrentYearQ4,
-	SUM(NextYear) NextYear,SUM(NextYearPlusOne) NextYearPlusOne,SUM(Jan) Jan,SUM(Feb) Feb,SUM(Mar)Mar,SUM(Apr)Apr,SUM(May)May,SUM(Jun)Jun,SUM(Jul) Jul,SUM(Aug) Aug,SUM(Sep)Sep,SUM(Oct)Oct,SUM(Nov)Nov,SUM([Dec])Dec FROM (
-	SELECT row_sort,BudgetLedger,ManagementAccounts2Name, JV,
+SELECT row_sort,BudgetLedger, ManagementAccounts2Name,JV,BusinessExpenditureType,Sum(PriorYear) PriorYear,Sum(CurrentYearQ1) as CurrentYearQ1,SUM(CurrentYearQ2) CurrentYearQ2,Sum(CurrentYearQ3) CurrentYearQ3,SUM(CurrentYearQ4) CurrentYearQ4,Sum(CurrentYear) as CurrentYear,
+	SUM(NextYear) NextYear,SUM(NextYearPlusOne) NextYearPlusOne,SUM(Jan) Jan,SUM(Feb) Feb,SUM(Mar)Mar,SUM(Apr)Apr,SUM(May)May,SUM(Jun)Jun,SUM(Jul) Jul,SUM(Aug) Aug,SUM(Sep)Sep,SUM(Oct)Oct,SUM(Nov)Nov,SUM([Dec])Dec,'' as blank FROM (
+	
+	
+	SELECT row_sort,BudgetLedger,
+	CASE WHEN ManagementAccounts2Code in ('800','805','807','808','809') THEN '&nbsp;&nbsp;&nbsp;&nbsp;' ELSE '&nbsp;&nbsp;' END + ManagementAccounts2Name as ManagementAccounts2Name,  -- need a double indent for these
+	
+	 JV,BusinessExpenditureType,
 	Sum(PriorYear) as PriorYear,
-	Sum(CurrentYearQ1) as CurrentYearQ1,Sum(CurrentYearQ2) as CurrentYearQ2 ,Sum(CurrentYearQ3) as CurrentYearQ3,Sum(CurrentYearQ4) as CurrentYearQ4,
+	Sum(CurrentYearQ1) as CurrentYearQ1,Sum(CurrentYearQ2) as CurrentYearQ2 ,Sum(CurrentYearQ3) as CurrentYearQ3,Sum(CurrentYearQ4) as CurrentYearQ4,Sum(CurrentYear) as CurrentYear,
 	Sum(NextYear) as NextYear,Sum(NextYearPlusOne) as NextYearPlusOne,
 	SUM(Jan) AS Jan,SUM(Feb) AS Feb,SUM(Mar) AS Mar,SUM(Apr) AS Apr,SUM(May) AS May,SUM(Jun) AS Jun,SUM(Jul) AS Jul,SUM(Aug) AS Aug,SUM(Sep) AS Sep,SUM(Oct) AS Oct,SUM(Nov) AS Nov,SUM(Dec) AS Dec	
 	FROM core
 	GROUP BY ManagementAccounts2Name /*this will get us the loweset levels */
-	,ManagementAccounts2Code,BudgetLedger,row_sort,JV 
+	,ManagementAccounts2Code,BudgetLedger,row_sort,JV ,BusinessExpenditureType
 
 	UNION -- add a revenues summary
-	SELECT 55500,BudgetLedger,'REVENUES',JV,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SELECT 55500,BudgetLedger,'REVENUES',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
 	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE LEFT(AccountCode,1) = '6'
-	GROUP BY BudgetLedger,JV
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
 
 	UNION -- G&A Summary
-	SELECT 77700,BudgetLedger,'G&A',JV,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SELECT 77700,BudgetLedger,'G&A',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
 	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE ManagementAccounts2Code in ('800','805','807','808','809')
-	GROUP BY BudgetLedger,JV
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
 
 	UNION -- EBITDA Summary
-	SELECT 81100 ,BudgetLedger,JV ,'EBITDA',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SELECT 81100 ,BudgetLedger ,'EBITDA',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
 	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE LEFT(AccountCode,3) < '811' AND left(AccountCode,1) >='6'
-	GROUP BY BudgetLedger,JV
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
 
 	UNION -- Net-Profit/Loss
-	SELECT 99900,BudgetLedger,JV,'NET-PROFIT/LOSS',Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(NextYear),Sum(NextYearPlusOne),
+	SELECT 99900,BudgetLedger,'NET-PROFIT/LOSS',JV,BusinessExpenditureType,Sum(PriorYear), Sum(CurrentYearQ1), Sum(CurrentYearQ2), Sum(CurrentYearQ3), Sum(CurrentYearQ4),Sum(CurrentYear),Sum(NextYear),Sum(NextYearPlusOne),
 	SUM(Jan),SUM(Feb),SUM(Mar),SUM(Apr),SUM(May),SUM(Jun),SUM(Jul),SUM(Aug),SUM(Sep),SUM(Oct),SUM(Nov),SUM(Dec)
 	FROM core
 	WHERE left(ManagementAccounts2Code,1) >=6
-	GROUP BY BudgetLedger,JV
+	GROUP BY BudgetLedger,JV,BusinessExpenditureType
 
 ) data
-WHERE row_sort >='55500'
-AND row_sort NOT IN(61000,63000) -- AZI specific exclusion
-AND BudgetLedger='B'
---and JV='AZILTD'
-GROUP BY row_sort,BudgetLedger,ManagementAccounts2Name,JV
-ORDER BY row_sort
 
-
---SELECT * FROM Admin.Mart_Configuration
-
+WHERE row_sort NOT IN(61000,63000) -- AZI specific exclusion
+--AND LEFT(Cast(row_sort *1000   as varchar(20)),5)  >='555'
+GROUP BY row_sort,BudgetLedger,ManagementAccounts2Name,JV,BusinessExpenditureType
