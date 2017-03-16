@@ -1,0 +1,10 @@
+SELECT Licence_Sort_Order ,Licence_Name,Sum(Amount)
+FROM PTSL_Azimuth_Licence_Sort  Sort
+LEFT JOIN (
+	SELECT ManagementAccounts2Code,Amount ,Left(Period,4) as Year, Ledger
+	FROM PTSL_azimuth_transaction_data
+) data
+on Sort.Licence_Code = data.ManagementAccounts2Code
+WHERE (Data.Year = '2015' or data.Year is null) and (Data.Ledger = 'A' or Data.Ledger is null)
+GROUP BY Licence_Sort_Order,Licence_Name
+ORDER BY Licence_Sort_Order
