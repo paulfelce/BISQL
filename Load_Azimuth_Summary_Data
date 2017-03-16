@@ -1,0 +1,57 @@
+ALTER PROC [dbo].[PTSL_Load_Azimuth_Summary_Data] AS
+--Reload the PTSL_Azimuth_Summary_Table
+DROP TABLE PTSL_Azimuth_Summary_Table
+
+/* NEED TO MODIFY THIS TO BRING BACK ROWS FOR ALL CATEGORIES
+PROBABLY GOING TO BE A UNION OR AN INSERT - one to mull over then implement 
+*/
+
+--The summary table is built by grouping data from details
+--This means we only have to change the code in one place is groupings change and we maintain consistency
+SELECT * INTO PTSL_Azimuth_Summary_Table 
+FROM 
+(
+SELECT row_sort,
+Ledger as BudgetLedger,
+ManagementAccounts2Name,
+Entity as JV, 
+CASE WHEN ANAL_T3 = '' THEN '--' ELSE ANAL_T3 END as Dept,
+CASE WHEN ANAL_T1 = '' THEN '--' ELSE ANAL_T1 END as Licence,
+BusinessExpenditureType,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value -1 THEN [AMOUNT]/1000 ELSE 0 END )AS PriorYear,
+	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'001',Admin.Mart_Configuration.Value+'002',Admin.Mart_Configuration.Value+'003') THEN [AMOUNT]/1000 ELSE 0 END )AS CurrentYearQ1,
+	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'004',Admin.Mart_Configuration.Value+'005',Admin.Mart_Configuration.Value+'006') THEN [AMOUNT]/1000 ELSE 0 END )AS CurrentYearQ2,
+	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'007',Admin.Mart_Configuration.Value+'008',Admin.Mart_Configuration.Value+'009') THEN [AMOUNT]/1000 ELSE 0 END )AS CurrentYearQ3,
+	SUM (CASE WHEN PERIOD in (Admin.Mart_Configuration.Value+'010',Admin.Mart_Configuration.Value+'011',Admin.Mart_Configuration.Value+'012') THEN [AMOUNT]/1000 ELSE 0 END )AS CurrentYearQ4,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value  THEN [AMOUNT]/1000 ELSE 0 END )AS CurrentYear,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value+1 THEN [AMOUNT]/1000 ELSE 0 END )AS NextYear,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value+2 THEN [AMOUNT]/1000 ELSE 0 END )AS NextYearPlusOne,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '001' THEN [AMOUNT]/1000 ELSE 0 END )AS Jan,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '002' THEN [AMOUNT]/1000 ELSE 0 END )AS Feb,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '003' THEN [AMOUNT]/1000 ELSE 0 END )AS Mar,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '004' THEN [AMOUNT]/1000 ELSE 0 END )AS Apr,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '005' THEN [AMOUNT]/1000 ELSE 0 END )AS May,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '006' THEN [AMOUNT]/1000 ELSE 0 END )AS Jun,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '007' THEN [AMOUNT]/1000 ELSE 0 END )AS Jul,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '008' THEN [AMOUNT]/1000 ELSE 0 END )AS Aug,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '009' THEN [AMOUNT]/1000 ELSE 0 END )AS Sep,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '010' THEN [AMOUNT]/1000 ELSE 0 END )AS Oct,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '011' THEN [AMOUNT]/1000 ELSE 0 END )AS Nov,
+	SUM (CASE WHEN LEFT(PERIOD,4) = Admin.Mart_Configuration.Value AND RIGHT(PERIOD,3) = '012' THEN [AMOUNT]/1000 ELSE 0 END )AS Dec,
+	'' as blank,
+	bold_row,
+	isLicence
+ FROM PTSL_azimuth_transaction_data 
+LEFT JOIN Admin.Mart_Configuration ON SettingID = 'BudgetYear' --Use the configuration to tell us which year we are displaying as the budget year. 
+WHERE row_sort NOT IN(61000,63000) -- AZI specific exclusion
+GROUP BY row_sort,Ledger ,ManagementAccounts2Name,Entity, ANAL_T3,ANAL_T1,
+BusinessExpenditureType,bold_row,isLicence
+
+
+) data 
+order by row_sort , JV
+--SELECT top 10 * FROM PTSL_azimuth_transaction_data 
+
+
+
+GO
